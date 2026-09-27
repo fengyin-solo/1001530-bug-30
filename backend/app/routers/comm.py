@@ -30,9 +30,22 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/stats")
+def stat_cards() -> dict[str, Any]:
+    """统计卡与列表、详情共用同一份在册数据；已报废归档设备不参与在运统计。"""
+    return {"module": "comm", "cards": service.get_stats()}
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出通信设备清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "comm", "total": total, "items": items}
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
-    """读取单条通信设备明细；不存在时给出可读的错误说明。"""
+    """读取单条通信设备明细；不存在或已归档时给出可读的错误说明。"""
     entry = service.get_entry(entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"通信设备 {entry_id} 不存在或已归档")
@@ -50,16 +63,9 @@ def create_entry(payload: EntryPayload) -> ActionResult:
 
 @router.post("/{entry_id}/actions", response_model=ActionResult)
 def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
-    """对单条通信设备执行安排检修、确认正常、报废设备；不允许的动作会被拦下并说明原因。"""
+    """对单条通信设备执行安排检修、确认正常、报废设备；不合流转顺序的动作会被拦下并说明原因。"""
     action = str(payload.values.get("action") or "").strip()
     entry, message = service.run_action(entry_id, action)
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出通信设备清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "comm", "total": total, "items": items}

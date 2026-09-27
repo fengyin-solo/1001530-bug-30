@@ -14,6 +14,7 @@ class Store:
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
+        self._archives: dict[str, list[dict[str, Any]]] = {name: [] for name in SEED_ROWS}
 
     def module_names(self) -> list[str]:
         return sorted(self._tables)
@@ -21,11 +22,31 @@ class Store:
     def rows(self, module: str) -> list[dict[str, Any]]:
         return self._tables.setdefault(module, [])
 
+    def archived_rows(self, module: str) -> list[dict[str, Any]]:
+        return self._archives.setdefault(module, [])
+
     def find(self, module: str, entry_id: int) -> dict[str, Any] | None:
         for row in self.rows(module):
             if int(row.get("id", 0)) == entry_id:
                 return row
         return None
+
+    def archive(self, module: str, entry_id: int) -> dict[str, Any] | None:
+        """把记录从在册表移到归档表；归档后列表、详情与统计都不再算它。"""
+        rows = self.rows(module)
+        for index, row in enumerate(rows):
+            if int(row.get("id", 0)) == entry_id:
+                archived = rows.pop(index)
+                archived["archived"] = True
+                self.archived_rows(module).append(archived)
+                return archived
+        return None
+
+    def next_id(self, module: str) -> int:
+        """在册与归档一起取最大 id，避免归档后新记录复用旧编号。"""
+        ids = [int(row.get("id", 0)) for row in self.rows(module)]
+        ids += [int(row.get("id", 0)) for row in self.archived_rows(module)]
+        return max(ids, default=0) + 1
 
     def overview(self) -> dict[str, object]:
         modules: list[dict[str, object]] = []
